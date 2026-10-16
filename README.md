@@ -15,3 +15,4 @@ java -cp out Main
 | Day | Date | What was added | Java concept |
 |-----|------|----------------|--------------|
 | 0 | 2026-10-16 | Repository setup, README | — |
+| 1 | 2026-10-16 |  Scanner + switch + do while + basic body | Basics |
