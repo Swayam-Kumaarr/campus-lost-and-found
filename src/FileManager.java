@@ -15,7 +15,7 @@ public class FileManager {
         this.fileName = fileName;
     }
  
-    public void save(ItemStore store) throws IOException {
+    public synchronized void save(ItemStore store) throws IOException {
         Item[] items = store.getAll();
         BufferedWriter writer = new BufferedWriter(new FileWriter(fileName));
         try {

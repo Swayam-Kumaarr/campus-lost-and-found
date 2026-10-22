@@ -2,26 +2,70 @@ public class ItemStore {
  
     private final Item[] items;
     private int count;
+    private int addCount;
  
     public ItemStore(int capacity) {
         items = new Item[capacity];
         count = 0;
     }
  
-    public boolean addItem(Item item) {
+    public synchronized boolean addItem(Item item) {
         if (count == items.length) {
             return false;
         }
         items[count] = item;
         count++;
+        addCount++;
+        notifyAll();
         return true;
     }
  
-    public int size() {
+    public synchronized int size() {
         return count;
     }
  
-    public void displayAll() {
+    public synchronized int getAddCount() {
+        return addCount;
+    }
+ 
+    public synchronized Item getLatest() {
+        if (count == 0) {
+            return null;
+        }
+        return items[count - 1];
+    }
+ 
+    public synchronized void wakeUpAll() {
+        notifyAll();
+    }
+ 
+    public synchronized Summary getSummary() {
+        return new Summary();
+    }
+ 
+    public class Summary {
+        private int total, lost, found, valuable;
+ 
+        private Summary() {
+            total = count;
+            for (int i = 0; i < count; i++) {
+                if (items[i] instanceof LostItem) {
+                    lost++;
+                } else if (items[i] instanceof ValuableFoundItem) {
+                    valuable++;
+                } else {
+                    found++;
+                }
+            }
+        }
+ 
+        public void print() {
+            System.out.println("Items: " + total + " total | " + lost + " lost | "
+                    + found + " found | " + valuable + " valuable");
+        }
+    }
+ 
+    public synchronized void displayAll() {
         if (count == 0) {
             System.out.println("No items reported yet.");
             return;
@@ -31,7 +75,7 @@ public class ItemStore {
         }
     }
  
-    public Item find(int id) {
+    public synchronized Item find(int id) {
         for (int i = 0; i < count; i++) {
             if (items[i].getId() == id) {
                 return items[i];
@@ -40,7 +84,7 @@ public class ItemStore {
         throw new ItemNotFoundException(id);
     }
  
-    public Item[] find(String keyword) {
+    public synchronized Item[] find(String keyword) {
         String k = keyword.toLowerCase();
         Item[] temp = new Item[count];
         int n = 0;
@@ -60,7 +104,7 @@ public class ItemStore {
         return result;
     }
  
-    public Item removeItem(int id) {
+    public synchronized Item removeItem(int id) {
         for (int i = 0; i < count; i++) {
             if (items[i].getId() == id) {
                 Item removed = items[i];
@@ -75,7 +119,7 @@ public class ItemStore {
         throw new ItemNotFoundException(id);
     }
  
-    public Item[] getAll() {
+    public synchronized Item[] getAll() {
         Item[] result = new Item[count];
         for (int i = 0; i < count; i++) {
             result[i] = items[i];
@@ -83,7 +127,7 @@ public class ItemStore {
         return result;
     }
  
-    public LostItem[] getLostItems() {
+    public synchronized LostItem[] getLostItems() {
         LostItem[] temp = new LostItem[count];
         int n = 0;
         for (int i = 0; i < count; i++) {
@@ -99,7 +143,7 @@ public class ItemStore {
         return result;
     }
  
-    public FoundItem[] getFoundItems() {
+    public synchronized FoundItem[] getFoundItems() {
         FoundItem[] temp = new FoundItem[count];
         int n = 0;
         for (int i = 0; i < count; i++) {
