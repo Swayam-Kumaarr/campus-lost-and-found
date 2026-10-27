@@ -1,15 +1,12 @@
+import java.io.*;
+
 public class ItemStore {
- 
-    private final Item[] items;
-    private int count;
-    private int addCount;
- 
-    public ItemStore(int capacity) {
-        items = new Item[capacity];
-        count = 0;
-    }
- 
-    public synchronized boolean addItem(Item item) {
+
+    private final Item[] items = new Item[100];
+    private int count = 0;
+    private int addCount = 0;
+
+    public synchronized boolean add(Item item) {
         if (count == items.length) {
             return false;
         }
@@ -19,63 +16,24 @@ public class ItemStore {
         notifyAll();
         return true;
     }
- 
-    public synchronized int size() {
-        return count;
-    }
- 
-    public synchronized int getAddCount() {
-        return addCount;
-    }
- 
+
+    public synchronized int getAddCount() { return addCount; }
+    public synchronized void wakeUp() { notifyAll(); }
+
     public synchronized Item getLatest() {
-        if (count == 0) {
-            return null;
-        }
-        return items[count - 1];
+        return count == 0 ? null : items[count - 1];
     }
- 
-    public synchronized void wakeUpAll() {
-        notifyAll();
-    }
- 
-    public synchronized Summary getSummary() {
-        return new Summary();
-    }
- 
-    public class Summary {
-        private int total, lost, found, valuable;
- 
-        private Summary() {
-            total = count;
-            for (int i = 0; i < count; i++) {
-                if (items[i] instanceof LostItem) {
-                    lost++;
-                } else if (items[i] instanceof ValuableFoundItem) {
-                    valuable++;
-                } else {
-                    found++;
-                }
-            }
-        }
- 
-        public void print() {
-            System.out.println("Items: " + total + " total | " + lost + " lost | "
-                    + found + " found | " + valuable + " valuable");
-        }
-    }
- 
+
     public synchronized void displayAll() {
         if (count == 0) {
             System.out.println("No items reported yet.");
-            return;
         }
         for (int i = 0; i < count; i++) {
             System.out.println(items[i]);
         }
     }
- 
-    public synchronized Item find(int id) {
+
+    public synchronized Item find(int id) throws ItemNotFoundException {
         for (int i = 0; i < count; i++) {
             if (items[i].getId() == id) {
                 return items[i];
@@ -83,79 +41,97 @@ public class ItemStore {
         }
         throw new ItemNotFoundException(id);
     }
- 
-    public synchronized Item[] find(String keyword) {
-        String k = keyword.toLowerCase();
-        Item[] temp = new Item[count];
-        int n = 0;
-        for (int i = 0; i < count; i++) {
-            Item it = items[i];
-            if (it.getName().toLowerCase().contains(k)
-                    || it.getCategory().toLowerCase().contains(k)
-                    || it.getLocation().toLowerCase().contains(k)) {
-                temp[n] = it;
-                n++;
-            }
-        }
-        Item[] result = new Item[n];
-        for (int i = 0; i < n; i++) {
-            result[i] = temp[i];
-        }
-        return result;
-    }
- 
-    public synchronized Item removeItem(int id) {
+
+    public synchronized void remove(int id) throws ItemNotFoundException {
         for (int i = 0; i < count; i++) {
             if (items[i].getId() == id) {
-                Item removed = items[i];
                 for (int j = i; j < count - 1; j++) {
                     items[j] = items[j + 1];
                 }
                 items[count - 1] = null;
                 count--;
-                return removed;
+                return;
             }
         }
         throw new ItemNotFoundException(id);
     }
- 
-    public synchronized Item[] getAll() {
-        Item[] result = new Item[count];
+
+    public synchronized int printMatches(Item only, String prefix) {
+        int matches = 0;
         for (int i = 0; i < count; i++) {
-            result[i] = items[i];
-        }
-        return result;
-    }
- 
-    public synchronized LostItem[] getLostItems() {
-        LostItem[] temp = new LostItem[count];
-        int n = 0;
-        for (int i = 0; i < count; i++) {
-            if (items[i] instanceof LostItem) {
-                temp[n] = (LostItem) items[i];
-                n++;
+            for (int j = 0; j < count; j++) {
+                if (items[i] instanceof LostItem && items[j] instanceof FoundItem
+                        && (only == null || only == items[i] || only == items[j])) {
+                    LostItem lost = (LostItem) items[i];
+                    FoundItem found = (FoundItem) items[j];
+                    double score = lost.matchScore(found);
+                    if (score >= Matchable.MIN_SCORE) {
+                        System.out.println(prefix + (int) (score * 100) + "% match: LOST #" + lost.getId() + " "
+                                + lost.getName() + "  <->  FOUND #" + found.getId() + " " + found.getName()
+                                + " (kept at " + found.getHandedTo() + ")");
+                        matches++;
+                    }
+                }
             }
         }
-        LostItem[] result = new LostItem[n];
-        for (int i = 0; i < n; i++) {
-            result[i] = temp[i];
-        }
-        return result;
+        return matches;
     }
- 
-    public synchronized FoundItem[] getFoundItems() {
-        FoundItem[] temp = new FoundItem[count];
-        int n = 0;
-        for (int i = 0; i < count; i++) {
-            if (items[i] instanceof FoundItem) {
-                temp[n] = (FoundItem) items[i];
-                n++;
+
+    public synchronized void save(String fileName) throws IOException {
+        BufferedWriter writer = new BufferedWriter(new FileWriter(fileName));
+        try {
+            for (int i = 0; i < count; i++) {
+                writer.write(items[i].toFileLine());
+                writer.newLine();
             }
+        } finally {
+            writer.close();
         }
-        FoundItem[] result = new FoundItem[n];
-        for (int i = 0; i < n; i++) {
-            result[i] = temp[i];
+    }
+
+    public int load(String fileName) throws IOException {
+        if (!new File(fileName).exists()) {
+            return 0;
         }
-        return result;
+        int loaded = 0;
+        BufferedReader reader = new BufferedReader(new FileReader(fileName));
+        try {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] p = line.split("\\|");
+                try {
+                    Item item;
+                    if (p[0].equals("LOST")) {
+                        item = new LostItem(p[1], p[2], p[3], p[4], p[5], Double.parseDouble(p[6]));
+                    } else if (p[0].equals("VALUABLE")) {
+                        item = new ValuableFoundItem(p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+                    } else {
+                        item = new FoundItem(p[1], p[2], p[3], p[4], p[5], p[6]);
+                    }
+                    if (add(item)) {
+                        loaded++;
+                    }
+                } catch (RuntimeException e) {
+                    System.out.println("Skipped a damaged line: " + line);
+                }
+            }
+        } finally {
+            reader.close();
+        }
+        return loaded;
+    }
+
+    public void backup(String from, String to) throws IOException {
+        BufferedInputStream in = new BufferedInputStream(new FileInputStream(from));
+        BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(to));
+        try {
+            int b;
+            while ((b = in.read()) != -1) {
+                out.write(b);
+            }
+        } finally {
+            in.close();
+            out.close();
+        }
     }
 }

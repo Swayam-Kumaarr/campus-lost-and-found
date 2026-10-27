@@ -1,16 +1,13 @@
 public class AutoMatcher implements Runnable {
- 
+
     private final ItemStore store;
-    private final MatchEngine engine;
- 
     private volatile boolean running = true;
     private volatile boolean paused = false;
- 
-    public AutoMatcher(ItemStore store, MatchEngine engine) {
+
+    public AutoMatcher(ItemStore store) {
         this.store = store;
-        this.engine = engine;
     }
- 
+
     @Override
     public void run() {
         int lastSeen = store.getAddCount();
@@ -24,39 +21,26 @@ public class AutoMatcher implements Runnable {
                         return;
                     }
                 }
-                if (!running) {
-                    break;
-                }
                 lastSeen = store.getAddCount();
                 newest = store.getLatest();
             }
-            if (newest == null) {
-                continue;
-            }
-            MatchEngine.MatchResult[] results = engine.findMatches(newest, store);
-            for (MatchEngine.MatchResult r : results) {
-                System.out.println();
-                System.out.println("[Auto-Matcher] Possible match found! " + r);
+            if (running && newest != null) {
+                store.printMatches(newest, "\n[Auto-Matcher] Possible match found! ");
             }
         }
         System.out.println("[Auto-Matcher] stopped.");
     }
- 
-    public void pause() {
-        paused = true;
-    }
- 
+
+    public boolean isPaused() { return paused; }
+    public void pause() { paused = true; }
+
     public void resume() {
         paused = false;
-        store.wakeUpAll();
+        store.wakeUp();
     }
- 
+
     public void stop() {
         running = false;
-        store.wakeUpAll();
-    }
- 
-    public boolean isPaused() {
-        return paused;
+        store.wakeUp();
     }
 }
